@@ -1,0 +1,26 @@
+name: release
+
+# Release commits and tags are pushed here by the source repo's release
+# workflow. This attaches the bundled server to a GitHub release so it
+# can be downloaded on its own as zportal.js.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish GitHub release with the bundle asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp client-mcp/dist/index.js zportal.js
+          gh release create "$GITHUB_REF_NAME" zportal.js \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Self-contained Zuar Portal client MCP server. Usage: node zportal.js" \
+          || gh release upload "$GITHUB_REF_NAME" zportal.js --clobber
