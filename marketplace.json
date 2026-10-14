@@ -1,0 +1,19 @@
+{
+  "name": "zuar-portal",
+  "description": "Zuar Portal plugin for Claude Code",
+  "owner": {
+    "name": "Zuar",
+    "url": "https://github.com/zuarbase"
+  },
+  "plugins": [
+    {
+      "name": "zportal",
+      "description": "Zuar Portal plugin: Client MCP exposing one deduplicated tool surface for many portal instances",
+      "source": {
+        "source": "archive",
+        "url": "https://github.com/zuarbase/zuar-portal-mcp-plugin/releases/download/v0.6.0/zportal-0.6.0.zip",
+        "sha256": "561ba09d67d3edf281d9edf04ea966d6b7ce423143369cd2d36eda3edf88bea9"
+      }
+    }
+  ]
+}
