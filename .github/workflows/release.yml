@@ -1,26 +1,70 @@
 name: release
 
 # Release commits and tags are pushed here by the source repo's release
-# workflow. This attaches the bundled server to a GitHub release so it
-# can be downloaded on its own as zportal.js.
+# workflow. For each tag this:
+#
+# 1. builds the plugin zip, a marketplace.json that installs the plugin
+#    from that zip (pinned by its sha256), and zportal.js, the bundled
+#    server on its own (.github/scripts/build-release-assets.sh);
+# 2. attaches all three to a GitHub release for the tag;
+# 3. commits that marketplace.json to the top level of main. Users add it
+#    as https://raw.githubusercontent.com/<repo>/main/marketplace.json.
+#    Claude Code downloads that file and then the zip over HTTPS, so
+#    installing needs no git. Step 3 runs only for the newest tag, so
+#    re-running an older tag never moves users back to it.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build, such as v0.6.0
+        required: true
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Publish GitHub release with the bundle asset
-        env:
-          GH_TOKEN: ${{ github.token }}
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - name: Build release assets
+        run: bash .github/scripts/build-release-assets.sh . "$TAG" "$GITHUB_REPOSITORY" "$RUNNER_TEMP/assets"
+      - name: Publish the GitHub release
         run: |
-          cp client-mcp/dist/index.js zportal.js
-          gh release create "$GITHUB_REF_NAME" zportal.js \
-            --title "$GITHUB_REF_NAME" \
-            --notes "Self-contained Zuar Portal client MCP server. Usage: node zportal.js" \
-          || gh release upload "$GITHUB_REF_NAME" zportal.js --clobber
+          # gh uploads the assets before it publishes the release, so the
+          # release never appears with some of them missing.
+          gh release create "$TAG" "$RUNNER_TEMP"/assets/* \
+            --title "$TAG" \
+            --notes "Zuar Portal MCP plugin $TAG. Claude Code installs it through marketplace.json; other MCP clients run zportal.js with node." \
+          || gh release upload "$TAG" "$RUNNER_TEMP"/assets/* --clobber
+      - name: Point marketplace.json on main at this release
+        run: |
+          newest=$(git tag -l 'v*' --sort=-v:refname | head -n 1)
+          if [ "$newest" != "$TAG" ]; then
+            echo "$TAG is not the newest tag ($newest); main stays as it is."
+            exit 0
+          fi
+          git checkout main
+          git pull --ff-only origin main
+          cp "$RUNNER_TEMP/assets/marketplace.json" marketplace.json
+          git add marketplace.json
+          if git diff --cached --quiet; then
+            echo "marketplace.json on main already points at $TAG."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Point marketplace.json at $TAG"
+          git push origin main
